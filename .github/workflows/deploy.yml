@@ -18,34 +18,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-
-      - name: Install dependencies
-        working-directory: app
-        run: npm ci
-
-      - name: Build
-        working-directory: app
-        env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_DATABASE_URL: ${{ secrets.VITE_FIREBASE_DATABASE_URL }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-        run: npm run build
+      - name: Inject Firebase config
+        working-directory: vision-board/public
+        run: |
+          cat > firebase-config.js << 'JSEOF'
+          var FIREBASE_CONFIG = {
+            apiKey: "${{ secrets.VITE_FIREBASE_API_KEY }}",
+            authDomain: "${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}",
+            databaseURL: "${{ secrets.VITE_FIREBASE_DATABASE_URL }}",
+            projectId: "${{ secrets.VITE_FIREBASE_PROJECT_ID }}",
+            storageBucket: "${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}",
+            messagingSenderId: "${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}",
+            appId: "${{ secrets.VITE_FIREBASE_APP_ID }}"
+          };
+          JSEOF
 
       - name: Copy index.html as 404.html for SPA routing
-        working-directory: app
-        run: cp dist/index.html dist/404.html
+        working-directory: vision-board/public
+        run: cp index.html 404.html
 
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: app/dist
+          publish_dir: vision-board/public

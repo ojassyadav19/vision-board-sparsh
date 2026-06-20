@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sparch CCTV — Creative Vision Board</title>
+<title>Sparsh CCTV — Creative Vision Board</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Inter',-apple-system,sans-serif;background:#070D1A;color:#E2E8F0;min-height:100vh;}
@@ -298,32 +301,52 @@ function unassigned(){return S.gallery.filter(m=>!m.ideaId);}
 function galFiltered(){if(S.galFilter==='all')return S.gallery;if(S.galFilter==='unassigned')return S.gallery.filter(m=>!m.ideaId);return S.gallery.filter(m=>m.ideaId==S.galFilter);}
 function stats(){return{ideas:S.ideas.length,dev:S.ideas.filter(i=>i.status==='developing').length,pitch:S.ideas.filter(i=>i.status==='ready').length,media:S.gallery.length};}
 
-/* ═══ STORAGE ════════════════════════════════════════ */
-const API_BASE = '/api';
+/* ═══ STORAGE (Firebase real-time + localStorage fallback) ═══ */
+let fbDb=null, fbRef=null, _saving=false;
+try{
+  if(typeof FIREBASE_CONFIG!=='undefined'&&FIREBASE_CONFIG.apiKey&&FIREBASE_CONFIG.databaseURL){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    fbDb=firebase.database();
+    fbRef=fbDb.ref('visionBoard');
+  }
+}catch(err){console.warn('Firebase init skipped:',err.message);}
 
 async function save(){
+  if(_saving)return;_saving=true;
+  const data={ideas:S.ideas,gallery:S.gallery};
   try{
-    const res=await fetch(`${API_BASE}/board`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ideas:S.ideas,gallery:S.gallery})});
-    if(!res.ok)throw new Error('Save failed');
-  }catch(e){
-    console.error('Save error:',e);
-    try{localStorage.setItem('sv_ideas',JSON.stringify(S.ideas));}catch{}
+    if(fbRef){await fbRef.set(data);}
+    else{localStorage.setItem('sv_board',JSON.stringify(data));}
+  }catch(err){
+    console.error('Save error:',err);
+    localStorage.setItem('sv_board',JSON.stringify(data));
   }
+  _saving=false;
 }
 
 async function load(){
-  try{
-    const res=await fetch(`${API_BASE}/board`);
-    if(!res.ok)throw new Error('Load failed');
-    const data=await res.json();
-    S.ideas=data.ideas||JSON.parse(JSON.stringify(SEEDS));
-    S.gallery=data.gallery||[];
-  }catch(e){
-    console.error('Load error:',e);
-    try{S.ideas=JSON.parse(localStorage.getItem('sv_ideas')||'null')||JSON.parse(JSON.stringify(SEEDS));}catch{S.ideas=JSON.parse(JSON.stringify(SEEDS));}
-    try{S.gallery=JSON.parse(localStorage.getItem('sv_gallery')||'[]')||[];}catch{S.gallery=[];}
-  }
+  if(fbRef){
+    fbRef.on('value',snap=>{
+      const data=snap.val();
+      if(data&&!_saving){
+        S.ideas=data.ideas||JSON.parse(JSON.stringify(SEEDS));
+        S.gallery=data.gallery||[];
+        render();
+      }
+    },err=>{
+      console.warn('Firebase read error:',err);
+      loadFromLocal();render();
+    });
+    const snap=await fbRef.once('value');
+    const data=snap.val();
+    S.ideas=data?.ideas||JSON.parse(JSON.stringify(SEEDS));
+    S.gallery=data?.gallery||[];
+  }else{loadFromLocal();}
   render();
+}
+function loadFromLocal(){
+  try{const d=JSON.parse(localStorage.getItem('sv_board')||'null');if(d){S.ideas=d.ideas||JSON.parse(JSON.stringify(SEEDS));S.gallery=d.gallery||[];}else{S.ideas=JSON.parse(JSON.stringify(SEEDS));S.gallery=[];}}
+  catch{S.ideas=JSON.parse(JSON.stringify(SEEDS));S.gallery=[];}
 }
 
 /* ═══ TOAST ══════════════════════════════════════════ */
